@@ -1,70 +1,49 @@
+version: '3.8'
+
 services:
-  # MSSQL Database (Azure SQL Edge для ARM64 підтримки)
   db:
-    image: mcr.microsoft.com/azure-sql-edge:latest
+    # Оця версія ПІДХОДИТЬ для вашого комп'ютера (amd64)
+    image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: dentistry_db
-    platform: linux/arm64
     restart: always
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrongPassword123!
+    ports:
+      - "1433:1433"
     volumes:
       - mssql_data:/var/opt/mssql
-    healthcheck:
-      test: ["CMD-SHELL", "timeout 5 bash -c ':> /dev/tcp/127.0.0.1/1433' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+    # Це лікує помилку з I/O, яка у вас була
+    sysctls:
+      - fs.aio-max-nr=262144
 
-  # Django Backend
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     container_name: dentistry_backend
-    restart: always
-    command: >
-      sh -c "python manage.py makemigrations --noinput &&
-             python manage.py migrate --noinput &&
-             (python manage.py loaddata apps/appointments/fixtures/appointment_statuses.json 2>/dev/null || true) &&
-             python manage.py runserver 0.0.0.0:8000"
+    command: sh -c "sleep 10 && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./backend:/app
     ports:
       - "8000:8000"
-    environment:
-      - DJANGO_SECRET_KEY=django-insecure-dev-key-change-in-production
-      - DJANGO_DEBUG=True
-      - DB_NAME=dentistry
-      - DB_USER=sa
-      - DB_PASSWORD=YourStrong@Passw0rd
-      - DB_HOST=db
-      - DB_PORT=1433
-      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
     depends_on:
-      db:
-        condition: service_healthy
+      - db
+    environment:
+      - DB_HOST=db
+      - DB_NAME=master
+      - DB_USER=sa
+      - DB_PASSWORD=YourStrongPassword123!
+      - DB_PORT=1433
 
-  # React Frontend
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    build: ./frontend
     container_name: dentistry_frontend
-    restart: always
-    ports:
-      - "5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8000/api
+    ports:
+      - "5173:5173"
     depends_on:
       - backend
-    command: npm run dev -- --host
 
 volumes:
   mssql_data:
-
